@@ -4,7 +4,7 @@
 
 A single-page web map for exploring US waterways using USGS hydrography data, built because every existing viewer for this data is either broken, proprietary, or bad.
 
-**[Live demo](https://herschel.github.io/waterways_vibecode/)** (update this URL after deploying)
+**[Live demo](https://herschelrs.github.io/waterways_viewer/)**
 
 ## What it does
 
