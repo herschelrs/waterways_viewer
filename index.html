@@ -9,10 +9,16 @@
     <style>
         body { margin: 0; }
         #map { width: 100vw; height: 100vh; }
+        #go-btn { position: absolute; top: 10px; left: 50px; z-index: 1; padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font: 13px system-ui; }
+        #modal { display: none; position: fixed; inset: 0; z-index: 2; background: rgba(0,0,0,0.4); align-items: flex-start; justify-content: center; padding-top: 20vh; }
+        #modal.open { display: flex; }
+        #modal input { width: 400px; padding: 12px 16px; border: 2px solid #005ad2; border-radius: 8px; font: 16px system-ui; outline: none; }
     </style>
 </head>
 <body>
 <div id="map"></div>
+<button id="go-btn">Go to</button>
+<div id="modal"><input placeholder="Paste Google Maps URL or lat,lng" /></div>
 <script>
 (async () => {
     const style = await (await fetch('https://tiles.openfreemap.org/styles/liberty')).json();
@@ -24,6 +30,24 @@
         const sl = (layer['source-layer'] || '').toLowerCase();
         if (waterTerms.some(t => id.includes(t) || sl.includes(t))) {
             layer.maxzoom = 10;
+        }
+    });
+
+    // Boost track/service roads: earlier visibility, wider, tan color
+    style.layers.forEach(layer => {
+        const id = (layer.id || '').toLowerCase();
+        if (id.includes('service_track') || id.includes('service-track')) {
+            if (!layer.paint) layer.paint = {};
+            if (id.includes('casing')) {
+                layer.paint['line-color'] = '#9e4a4a';
+                layer.paint['line-width'] = { stops: [[12, 0.5], [14, 2], [18, 6]] };
+                layer.paint['line-opacity'] = { stops: [[12, 0], [12.5, 0.7]] };
+            } else {
+                layer.paint['line-color'] = '#c47070';
+                layer.paint['line-width'] = { stops: [[12, 0.3], [14, 1.5], [18, 4]] };
+                layer.paint['line-opacity'] = { stops: [[12, 0], [12.5, 1]] };
+            }
+            if (layer.minzoom && layer.minzoom > 12) layer.minzoom = 12;
         }
     });
 
@@ -43,16 +67,41 @@
         maxzoom: 16
     };
 
-    // NHD — flowlines, areas, waterbodies (server renders intermittent vs perennial)
-    style.sources['nhd'] = {
+    // NHD areas + waterbodies (default server rendering)
+    style.sources['nhd-fill'] = {
         type: 'raster',
         tiles: [
             'https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/export?' +
             'bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=512,512' +
-            '&dpi=96&format=png32&transparent=true&layers=show:4,5,6,7,8,9,10,11,12&f=image'
+            '&dpi=96&format=png32&transparent=true&layers=show:7,8,9,10,11,12&f=image'
         ],
         tileSize: 512,
         attribution: '<a href="https://www.usgs.gov/national-hydrography">USGS NHD</a>'
+    };
+
+    // NHD flowlines — all blue, dashed for intermittent/ephemeral
+    const blue = [0, 90, 210, 255];
+    const flowlineDynamic = [4, 5, 6].map(id => ({
+        id,
+        source: { type: 'mapLayer', mapLayerId: id },
+        drawingInfo: { renderer: {
+            type: 'uniqueValue', field1: 'fcode',
+            defaultSymbol: { type: 'esriSLS', style: 'esriSLSSolid', color: blue, width: 1.3 },
+            uniqueValueInfos: [
+                { value: '46003', symbol: { type: 'esriSLS', style: 'esriSLSDash', color: blue, width: 1.2 } },
+                { value: '46007', symbol: { type: 'esriSLS', style: 'esriSLSDot', color: blue, width: 1 } }
+            ]
+        }}
+    }));
+    const dynParam = encodeURIComponent(JSON.stringify(flowlineDynamic));
+    style.sources['nhd-lines'] = {
+        type: 'raster',
+        tiles: [
+            'https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/export?' +
+            'bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=512,512' +
+            '&dpi=96&format=png32&transparent=true&dynamicLayers=' + dynParam + '&f=image'
+        ],
+        tileSize: 512
     };
 
     // Relief at bottom
@@ -66,12 +115,10 @@
     // NHD below labels
     const firstSymbol = style.layers.findIndex(l => l.type === 'symbol');
     const insertIdx = firstSymbol >= 0 ? firstSymbol : style.layers.length;
-    style.layers.splice(insertIdx, 0, {
-        id: 'nhd',
-        type: 'raster',
-        source: 'nhd',
-        paint: { 'raster-opacity': 0.85 }
-    });
+    style.layers.splice(insertIdx, 0,
+        { id: 'nhd-fill', type: 'raster', source: 'nhd-fill', paint: { 'raster-opacity': 0.8 } },
+        { id: 'nhd-lines', type: 'raster', source: 'nhd-lines', paint: { 'raster-opacity': 0.9 } }
+    );
 
     const map = new maplibregl.Map({
         container: 'map',
@@ -83,6 +130,51 @@
 
     map.addControl(new maplibregl.NavigationControl());
     map.addControl(new maplibregl.ScaleControl());
+
+    // Google Maps URL / coordinate parser
+    function parseCoords(str) {
+        str = str.trim();
+        // Google Maps: /place/LAT,LNG/ or @LAT,LNG,Zz or !3dLAT!4dLNG
+        let m = str.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*),(\d+\.?\d*)z/);
+        if (m) return { lat: +m[1], lng: +m[2], zoom: +m[3] };
+        m = str.match(/place\/(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+        if (m) return { lat: +m[1], lng: +m[2] };
+        m = str.match(/!3d(-?\d+\.?\d*)!4d(-?\d+\.?\d*)/);
+        if (m) return { lat: +m[1], lng: +m[2] };
+        // Plain "lat, lng" or "lat lng"
+        m = str.match(/^(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)$/);
+        if (m) return { lat: +m[1], lng: +m[2] };
+        return null;
+    }
+
+    let pin = null;
+    function dropPin(lat, lng) {
+        if (pin) pin.remove();
+        const el = document.createElement('div');
+        el.style.cssText = 'width:20px;height:20px;background:#e74c3c;border:2px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 1px 4px rgba(0,0,0,0.4);';
+        pin = new maplibregl.Marker({ element: el, anchor: 'bottom-left' })
+            .setLngLat([lng, lat])
+            .addTo(map);
+    }
+
+    const modal = document.getElementById('modal');
+    const input = modal.querySelector('input');
+    document.getElementById('go-btn').addEventListener('click', () => {
+        modal.classList.add('open');
+        input.focus();
+    });
+    modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('open'); });
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { modal.classList.remove('open'); return; }
+        if (e.key !== 'Enter') return;
+        const c = parseCoords(input.value);
+        if (c) {
+            map.flyTo({ center: [c.lng, c.lat], zoom: c.zoom || 14 });
+            dropPin(c.lat, c.lng);
+            input.value = '';
+            modal.classList.remove('open');
+        }
+    });
 })();
 </script>
 </body>
