@@ -17,12 +17,14 @@
 (async () => {
     const style = await (await fetch('https://tiles.openfreemap.org/styles/liberty')).json();
 
-    // Strip water layers from OSM
+    // Cap OSM water layers at zoom 10 (NHD small-scale kicks in around there)
     const waterTerms = ['water', 'ocean', 'sea', 'lake', 'river', 'waterway', 'swimming', 'ferry'];
-    style.layers = style.layers.filter(layer => {
+    style.layers.forEach(layer => {
         const id = (layer.id || '').toLowerCase();
         const sl = (layer['source-layer'] || '').toLowerCase();
-        return !waterTerms.some(t => id.includes(t) || sl.includes(t));
+        if (waterTerms.some(t => id.includes(t) || sl.includes(t))) {
+            layer.maxzoom = 10;
+        }
     });
 
     // Semi-transparent background for relief
