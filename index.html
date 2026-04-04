@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>US Waterways — NHD</title>
+    <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet">
+    <style>
+        body { margin: 0; }
+        #map { width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+(async () => {
+    const style = await (await fetch('https://tiles.openfreemap.org/styles/liberty')).json();
+
+    // Strip water layers from OSM
+    const waterTerms = ['water', 'ocean', 'sea', 'lake', 'river', 'waterway', 'swimming', 'ferry'];
+    style.layers = style.layers.filter(layer => {
+        const id = (layer.id || '').toLowerCase();
+        const sl = (layer['source-layer'] || '').toLowerCase();
+        return !waterTerms.some(t => id.includes(t) || sl.includes(t));
+    });
+
+    // Semi-transparent background for relief
+    style.layers.forEach(layer => {
+        if (layer.type === 'background') {
+            if (!layer.paint) layer.paint = {};
+            layer.paint['background-opacity'] = 0.55;
+        }
+    });
+
+    // Shaded relief
+    style.sources['relief'] = {
+        type: 'raster',
+        tiles: ['https://basemap.nationalmap.gov/arcgis/rest/services/USGSShadedReliefOnly/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256,
+        maxzoom: 16
+    };
+
+    // NHD — flowlines, areas, waterbodies (server renders intermittent vs perennial)
+    style.sources['nhd'] = {
+        type: 'raster',
+        tiles: [
+            'https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/export?' +
+            'bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=512,512' +
+            '&dpi=96&format=png32&transparent=true&layers=show:4,5,6,7,8,9,10,11,12&f=image'
+        ],
+        tileSize: 512,
+        attribution: '<a href="https://www.usgs.gov/national-hydrography">USGS NHD</a>'
+    };
+
+    // Relief at bottom
+    style.layers.unshift({
+        id: 'relief',
+        type: 'raster',
+        source: 'relief',
+        paint: { 'raster-opacity': 0.35 }
+    });
+
+    // NHD below labels
+    const firstSymbol = style.layers.findIndex(l => l.type === 'symbol');
+    const insertIdx = firstSymbol >= 0 ? firstSymbol : style.layers.length;
+    style.layers.splice(insertIdx, 0, {
+        id: 'nhd',
+        type: 'raster',
+        source: 'nhd',
+        paint: { 'raster-opacity': 0.85 }
+    });
+
+    const map = new maplibregl.Map({
+        container: 'map',
+        style,
+        center: [-98.5, 39.8],
+        zoom: 4,
+        hash: true
+    });
+
+    map.addControl(new maplibregl.NavigationControl());
+    map.addControl(new maplibregl.ScaleControl());
+})();
+</script>
+</body>
+</html>
