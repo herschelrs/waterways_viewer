@@ -16,9 +16,19 @@ self.addEventListener('fetch', e => {
     e.respondWith(
         caches.open('tiles-v1').then(cache =>
             cache.match(e.request).then(cached => {
-                if (cached) return cached;
+                if (cached) {
+                    self.clients.matchAll().then(clients =>
+                        clients.forEach(c => c.postMessage({ type: 'cache-hit', url }))
+                    );
+                    return cached;
+                }
                 return fetch(e.request).then(resp => {
-                    if (resp.ok) cache.put(e.request, resp.clone());
+                    if (resp.ok) {
+                        cache.put(e.request, resp.clone());
+                        self.clients.matchAll().then(clients =>
+                            clients.forEach(c => c.postMessage({ type: 'cache-store', url }))
+                        );
+                    }
                     return resp;
                 });
             })

@@ -13,8 +13,8 @@
         .maplibregl-ctrl-attrib { font-size: 9px !important; }
         .top-btn { position: absolute; top: 10px; z-index: 1; padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font: 13px system-ui; }
         #go-btn { left: 50px; }
-        #cache-btn { left: 120px; }
-        #cache-progress { position: absolute; top: 10px; left: 210px; z-index: 1; padding: 6px 12px; background: rgba(0,0,0,0.75); color: #fff; border-radius: 4px; font: 13px system-ui; display: none; }
+        #cache-btn { left: 120px; white-space: nowrap; }
+        #cache-progress { position: absolute; top: 10px; left: 240px; z-index: 1; padding: 6px 12px; background: rgba(0,0,0,0.75); color: #fff; border-radius: 4px; font: 13px system-ui; display: none; }
         #modal { display: none; position: fixed; inset: 0; z-index: 2; background: rgba(0,0,0,0.4); align-items: flex-start; justify-content: center; padding-top: 20vh; }
         #modal.open { display: flex; }
         #modal input { width: 400px; padding: 12px 16px; border: 2px solid #005ad2; border-radius: 8px; font: 16px system-ui; outline: none; }
@@ -23,7 +23,7 @@
 <body>
 <div id="map"></div>
 <button id="go-btn" class="top-btn">Go to</button>
-<button id="cache-btn" class="top-btn">Cache</button>
+<button id="cache-btn" class="top-btn">Save offline</button>
 <div id="cache-progress"></div>
 <div id="modal"><input placeholder="Paste Google Maps URL or lat,lng" /></div>
 <script>
@@ -71,7 +71,7 @@
         type: 'raster',
         tiles: ['https://basemap.nationalmap.gov/arcgis/rest/services/USGSShadedReliefOnly/MapServer/tile/{z}/{y}/{x}'],
         tileSize: 256,
-        maxzoom: 16
+        maxzoom: 13
     };
 
     // NHD areas + waterbodies (default server rendering)
@@ -165,7 +165,7 @@
             maxzoom: 15,
             paint: {
                 'line-color': 'rgba(139, 109, 56, 0.5)',
-                'line-width': ['case', ['==', ['get', 'level'], 1], 1, 0.5]
+                'line-width': ['case', ['==', ['coalesce', ['get', 'level'], 0], 1], 1, 0.5]
             }
         },
         {
@@ -175,7 +175,7 @@
             'source-layer': 'contours',
             minzoom: 12,
             maxzoom: 15,
-            filter: ['==', ['get', 'level'], 1],
+            filter: ['all', ['==', ['get', 'level'], 1], ['has', 'ele']],
             layout: {
                 'symbol-placement': 'line',
                 'text-field': ['concat', ['to-string', ['get', 'ele']], 'm'],
@@ -260,37 +260,102 @@
     // Service Worker for tile caching
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js').catch(e => console.warn('SW registration failed:', e));
+        navigator.serviceWorker.addEventListener('message', e => {
+            if (e.data.type === 'cache-hit') console.log('[cache] hit:', e.data.url.slice(0, 80));
+            if (e.data.type === 'cache-store') console.log('[cache] stored:', e.data.url.slice(0, 80));
+        });
     }
 
-    // Cache viewport: zoom through levels so SW caches all tiles
+    // Save offline: fetch all tiles for current bounds across zoom levels
     const progress = document.getElementById('cache-progress');
     let caching = false;
+
+    function lngToTileX(lng, z) { return Math.floor((lng + 180) / 360 * (1 << z)); }
+    function latToTileY(lat, z) {
+        const r = lat * Math.PI / 180;
+        return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * (1 << z));
+    }
+    function tileToBbox3857(x, y, z) {
+        const E = 20037508.342789244;
+        const s = E * 2 / (1 << z);
+        return [-E + x * s, E - (y + 1) * s, -E + (x + 1) * s, E - y * s].join(',');
+    }
+
+    function tileUrls(x, y, z) {
+        const urls = [];
+        // OSM vector tiles (skip custom protocol sources like contour://)
+        for (const [, src] of Object.entries(style.sources)) {
+            if (src.type === 'vector' && src.tiles && src.tiles[0].startsWith('http')) {
+                const maxz = src.maxzoom || 14;
+                const tz = Math.min(z, maxz);
+                const scale = 1 << (z - tz);
+                const tx = Math.floor(x / scale), ty = Math.floor(y / scale);
+                urls.push(src.tiles[0].replace('{z}', tz).replace('{x}', tx).replace('{y}', ty));
+            }
+        }
+        // Relief (256px, maxzoom 13)
+        const rz = Math.min(z, 13);
+        const rs = 1 << (z - rz);
+        urls.push(`https://basemap.nationalmap.gov/arcgis/rest/services/USGSShadedReliefOnly/MapServer/tile/${rz}/${Math.floor(y / rs)}/${Math.floor(x / rs)}`);
+        // DEM (256px, maxzoom 13)
+        urls.push(`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${rz}/${Math.floor(x / rs)}/${Math.floor(y / rs)}.png`);
+        // NHD fill + lines (512px — tile zoom is z-1)
+        const nz = Math.max(z - 1, 0);
+        const nx = Math.floor(x / 2), ny = Math.floor(y / 2);
+        const bbox = tileToBbox3857(nx, ny, nz);
+        const nhdBase = 'https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/export?' +
+            'bbox=' + bbox + '&bboxSR=3857&imageSR=3857&size=512,512&dpi=96&format=png32&transparent=true';
+        urls.push(nhdBase + '&layers=show:7,8,9,10,11,12&f=image');
+        urls.push(nhdBase + '&dynamicLayers=' + dynParam + '&f=image');
+        return urls;
+    }
+
     document.getElementById('cache-btn').addEventListener('click', async () => {
         if (caching) return;
         caching = true;
-        const center = map.getCenter();
-        const origZoom = Math.round(map.getZoom());
-        const zMin = Math.max(10, origZoom - 2);
-        const zMax = Math.min(15, origZoom + 2);
+        const bounds = map.getBounds();
+        const curZoom = Math.round(map.getZoom());
+        const zMin = Math.max(10, curZoom - 4);
+        const zMax = Math.min(15, Math.max(curZoom + 2, 15));
 
-        function waitForTiles() {
-            return new Promise(resolve => {
-                const check = () => map.areTilesLoaded() ? resolve() : setTimeout(check, 200);
-                check();
-            });
+        // Collect unique URLs
+        const seen = new Set();
+        const allUrls = [];
+        for (let z = zMin; z <= zMax; z++) {
+            const xMin = lngToTileX(bounds.getWest(), z);
+            const xMax = lngToTileX(bounds.getEast(), z);
+            const yMin = latToTileY(bounds.getNorth(), z);
+            const yMax = latToTileY(bounds.getSouth(), z);
+            for (let x = xMin; x <= xMax; x++) {
+                for (let y = yMin; y <= yMax; y++) {
+                    for (const url of tileUrls(x, y, z)) {
+                        if (!seen.has(url)) { seen.add(url); allUrls.push(url); }
+                    }
+                }
+            }
         }
 
         progress.style.display = 'block';
-        for (let z = zMin; z <= zMax; z++) {
-            progress.textContent = `Caching z${z}/${zMax}...`;
-            map.jumpTo({ center, zoom: z });
-            await waitForTiles();
+        let done = 0, errors = 0;
+        const total = allUrls.length;
+        const CONCURRENCY = 6;
+
+        async function fetchOne(url) {
+            try { await fetch(url); }
+            catch { errors++; }
+            done++;
+            progress.textContent = `Saving ${done}/${total}` + (errors ? ` (${errors} errors)` : '');
         }
 
-        map.jumpTo({ center, zoom: origZoom });
-        await waitForTiles();
-        progress.textContent = `Cached z${zMin}-${zMax}`;
-        setTimeout(() => { progress.style.display = 'none'; }, 3000);
+        // Fetch with limited concurrency
+        const queue = [...allUrls];
+        const workers = Array(CONCURRENCY).fill(null).map(async () => {
+            while (queue.length) await fetchOne(queue.shift());
+        });
+        await Promise.all(workers);
+
+        progress.textContent = `Saved ${done - errors} tiles for z${zMin}-${zMax}`;
+        setTimeout(() => { progress.style.display = 'none'; }, 4000);
         caching = false;
     });
 })();
