@@ -11,7 +11,10 @@
         body { margin: 0; }
         #map { width: 100vw; height: 100vh; }
         .maplibregl-ctrl-attrib { font-size: 9px !important; }
-        #go-btn { position: absolute; top: 10px; left: 50px; z-index: 1; padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font: 13px system-ui; }
+        .top-btn { position: absolute; top: 10px; z-index: 1; padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font: 13px system-ui; }
+        #go-btn { left: 50px; }
+        #cache-btn { left: 120px; }
+        #cache-progress { position: absolute; top: 10px; left: 210px; z-index: 1; padding: 6px 12px; background: rgba(0,0,0,0.75); color: #fff; border-radius: 4px; font: 13px system-ui; display: none; }
         #modal { display: none; position: fixed; inset: 0; z-index: 2; background: rgba(0,0,0,0.4); align-items: flex-start; justify-content: center; padding-top: 20vh; }
         #modal.open { display: flex; }
         #modal input { width: 400px; padding: 12px 16px; border: 2px solid #005ad2; border-radius: 8px; font: 16px system-ui; outline: none; }
@@ -19,7 +22,9 @@
 </head>
 <body>
 <div id="map"></div>
-<button id="go-btn">Go to</button>
+<button id="go-btn" class="top-btn">Go to</button>
+<button id="cache-btn" class="top-btn">Cache</button>
+<div id="cache-progress"></div>
 <div id="modal"><input placeholder="Paste Google Maps URL or lat,lng" /></div>
 <script>
 (async () => {
@@ -251,6 +256,42 @@
             input.value = '';
             modal.classList.remove('open');
         }
+    });
+    // Service Worker for tile caching
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(e => console.warn('SW registration failed:', e));
+    }
+
+    // Cache viewport: zoom through levels so SW caches all tiles
+    const progress = document.getElementById('cache-progress');
+    let caching = false;
+    document.getElementById('cache-btn').addEventListener('click', async () => {
+        if (caching) return;
+        caching = true;
+        const center = map.getCenter();
+        const origZoom = Math.round(map.getZoom());
+        const zMin = Math.max(10, origZoom - 2);
+        const zMax = Math.min(15, origZoom + 2);
+
+        function waitForTiles() {
+            return new Promise(resolve => {
+                const check = () => map.areTilesLoaded() ? resolve() : setTimeout(check, 200);
+                check();
+            });
+        }
+
+        progress.style.display = 'block';
+        for (let z = zMin; z <= zMax; z++) {
+            progress.textContent = `Caching z${z}/${zMax}...`;
+            map.jumpTo({ center, zoom: z });
+            await waitForTiles();
+        }
+
+        map.jumpTo({ center, zoom: origZoom });
+        await waitForTiles();
+        progress.textContent = `Cached z${zMin}-${zMax}`;
+        setTimeout(() => { progress.style.display = 'none'; }, 3000);
+        caching = false;
     });
 })();
 </script>
