@@ -6,9 +6,11 @@
     <title>US Waterways — NHD</title>
     <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet">
+    <script src="https://unpkg.com/maplibre-contour@0.1.0/dist/index.min.js"></script>
     <style>
         body { margin: 0; }
         #map { width: 100vw; height: 100vh; }
+        .maplibregl-ctrl-attrib { font-size: 9px !important; }
         #go-btn { position: absolute; top: 10px; left: 50px; z-index: 1; padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font: 13px system-ui; }
         #modal { display: none; position: fixed; inset: 0; z-index: 2; background: rgba(0,0,0,0.4); align-items: flex-start; justify-content: center; padding-top: 20vh; }
         #modal.open { display: flex; }
@@ -104,6 +106,37 @@
         tileSize: 512
     };
 
+    // Contour lines from AWS terrain tiles
+    let contoursOk = false;
+    try {
+        const demSource = new mlcontour.DemSource({
+            url: 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png',
+            encoding: 'terrarium',
+            maxzoom: 13,
+            worker: true
+        });
+        demSource.setupMaplibre(maplibregl);
+        style.sources['contours'] = {
+            type: 'vector',
+            tiles: [demSource.contourProtocolUrl({
+                thresholds: {
+                    10: [200, 1000],
+                    11: [100, 500],
+                    12: [50, 200],
+                    13: [40, 200],
+                    14: [20, 100],
+                },
+                elevationKey: 'ele',
+                levelKey: 'level',
+                contourLayer: 'contours',
+                extent: 4096,
+                buffer: 1
+            })],
+            maxzoom: 15
+        };
+        contoursOk = true;
+    } catch(e) { console.error('Contour init failed:', e); }
+
     // Relief at bottom
     style.layers.unshift({
         id: 'relief',
@@ -115,7 +148,44 @@
     // NHD below labels
     const firstSymbol = style.layers.findIndex(l => l.type === 'symbol');
     const insertIdx = firstSymbol >= 0 ? firstSymbol : style.layers.length;
+
+    // Contour lines + labels (fade out past zoom 15)
+    const contourLayers = !contoursOk ? [] : [
+        {
+            id: 'contour-lines',
+            type: 'line',
+            source: 'contours',
+            'source-layer': 'contours',
+            minzoom: 10,
+            maxzoom: 15,
+            paint: {
+                'line-color': 'rgba(139, 109, 56, 0.5)',
+                'line-width': ['case', ['==', ['get', 'level'], 1], 1, 0.5]
+            }
+        },
+        {
+            id: 'contour-labels',
+            type: 'symbol',
+            source: 'contours',
+            'source-layer': 'contours',
+            minzoom: 12,
+            maxzoom: 15,
+            filter: ['==', ['get', 'level'], 1],
+            layout: {
+                'symbol-placement': 'line',
+                'text-field': ['concat', ['to-string', ['get', 'ele']], 'm'],
+                'text-size': 10,
+                'text-font': ['Noto Sans Regular']
+            },
+            paint: {
+                'text-color': 'rgba(139, 109, 56, 0.8)',
+                'text-halo-color': 'rgba(255, 255, 255, 0.8)',
+                'text-halo-width': 1.5
+            }
+        }
+    ];
     style.layers.splice(insertIdx, 0,
+        ...contourLayers,
         { id: 'nhd-fill', type: 'raster', source: 'nhd-fill', paint: { 'raster-opacity': 0.8 } },
         { id: 'nhd-lines', type: 'raster', source: 'nhd-lines', paint: { 'raster-opacity': 0.9 } }
     );
