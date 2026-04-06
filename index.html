@@ -13,17 +13,24 @@
         .maplibregl-ctrl-attrib { font-size: 9px !important; }
         .top-btn { position: absolute; top: 10px; z-index: 1; padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font: 13px system-ui; }
         #go-btn { left: 50px; }
-        #cache-btn { left: 120px; white-space: nowrap; }
-        #cache-progress { position: absolute; top: 10px; left: 240px; z-index: 1; padding: 6px 12px; background: rgba(0,0,0,0.75); color: #fff; border-radius: 4px; font: 13px system-ui; display: none; }
+        #locate-btn { left: 120px; line-height: 1; font-size: 18px; padding: 4px 10px; }
+        #cache-btn { left: 160px; white-space: nowrap; }
+        #cache-progress { position: absolute; top: 10px; left: 280px; z-index: 1; padding: 6px 12px; background: rgba(0,0,0,0.75); color: #fff; border-radius: 4px; font: 13px system-ui; display: none; }
         #modal { display: none; position: fixed; inset: 0; z-index: 2; background: rgba(0,0,0,0.4); align-items: flex-start; justify-content: center; padding-top: 20vh; }
         #modal.open { display: flex; }
         #modal input { width: 400px; padding: 12px 16px; border: 2px solid #005ad2; border-radius: 8px; font: 16px system-ui; outline: none; }
+        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 10; padding: 10px 20px; background: rgba(0,0,0,0.8); color: #fff; border-radius: 8px; font: 14px system-ui; pointer-events: none; opacity: 0; transition: opacity 0.3s; }
+        .toast.show { opacity: 1; }
+        .loc-marker { width: 18px; height: 18px; background: #2196f3; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 2px rgba(33,150,243,0.4), 0 1px 4px rgba(0,0,0,0.3); }
+        .heading-cone { position: absolute; width: 0; height: 0; border-left: 14px solid transparent; border-right: 14px solid transparent; border-bottom: 40px solid rgba(33,150,243,0.25); top: -36px; left: 50%; transform: translateX(-50%); transform-origin: bottom center; pointer-events: none; }
     </style>
 </head>
 <body>
 <div id="map"></div>
 <button id="go-btn" class="top-btn">Go to</button>
+<button id="locate-btn" class="top-btn" title="My location">&#9678;</button>
 <button id="cache-btn" class="top-btn">Save offline</button>
+<div id="toast" class="toast"></div>
 <div id="cache-progress"></div>
 <div id="modal"><input placeholder="Paste Google Maps URL or lat,lng" /></div>
 <script>
@@ -257,6 +264,115 @@
             modal.classList.remove('open');
         }
     });
+    // Toast helper
+    function showToast(msg, duration = 3000) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.classList.add('show');
+        clearTimeout(t._timer);
+        t._timer = setTimeout(() => t.classList.remove('show'), duration);
+    }
+
+    // Location + compass
+    let locMarker = null;
+    let headingCone = null;
+    let watchingHeading = false;
+
+    function createLocMarker(lat, lng) {
+        if (locMarker) locMarker.remove();
+        const el = document.createElement('div');
+        el.className = 'loc-marker';
+        // Cone for heading (hidden until we have a reading)
+        headingCone = document.createElement('div');
+        headingCone.className = 'heading-cone';
+        headingCone.style.display = 'none';
+        el.style.position = 'relative';
+        el.appendChild(headingCone);
+        locMarker = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
+    }
+
+    function updateHeading(deg) {
+        if (!headingCone) return;
+        headingCone.style.display = '';
+        // Rotate cone so it points in the heading direction (CSS 0deg = up = north)
+        headingCone.style.transform = `translateX(-50%) rotate(${deg + 180}deg)`;
+    }
+
+    function startCompass() {
+        if (watchingHeading) return;
+        watchingHeading = true;
+
+        // iOS: needs permission request from user gesture
+        if (typeof DeviceOrientationEvent !== 'undefined' &&
+            typeof DeviceOrientationEvent.requestPermission === 'function') {
+            DeviceOrientationEvent.requestPermission().then(state => {
+                if (state === 'granted') {
+                    window.addEventListener('deviceorientation', onOrientation);
+                } else {
+                    showToast('Compass permission denied');
+                }
+            }).catch(() => showToast('Compass not available'));
+            return;
+        }
+
+        // Android Chrome: use deviceorientationabsolute for magnetic north
+        if ('ondeviceorientationabsolute' in window) {
+            window.addEventListener('deviceorientationabsolute', onOrientationAbsolute);
+            return;
+        }
+
+        // Fallback: try standard event (alpha may or may not be absolute)
+        if ('ondeviceorientation' in window) {
+            window.addEventListener('deviceorientation', onOrientation);
+            return;
+        }
+
+        // No compass support — just silently don't show heading
+    }
+
+    function onOrientationAbsolute(e) {
+        if (e.alpha != null) {
+            // alpha is degrees from magnetic north; compass heading = 360 - alpha
+            updateHeading(360 - e.alpha);
+        }
+    }
+
+    function onOrientation(e) {
+        // iOS: webkitCompassHeading is degrees from true north (0=N, clockwise)
+        if (e.webkitCompassHeading != null) {
+            updateHeading(e.webkitCompassHeading);
+        } else if (e.absolute && e.alpha != null) {
+            // Some browsers give absolute alpha
+            updateHeading(360 - e.alpha);
+        }
+    }
+
+    document.getElementById('locate-btn').addEventListener('click', () => {
+        if (!navigator.geolocation) {
+            showToast('Geolocation not supported');
+            return;
+        }
+        showToast('Getting location...');
+        navigator.geolocation.getCurrentPosition(
+            pos => {
+                const { latitude: lat, longitude: lng } = pos.coords;
+                map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 14) });
+                createLocMarker(lat, lng);
+                showToast(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+                startCompass();
+            },
+            err => {
+                const msgs = {
+                    1: 'Location permission denied',
+                    2: 'Location unavailable',
+                    3: 'Location request timed out'
+                };
+                showToast(msgs[err.code] || 'Location error');
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    });
+
     // Service Worker for tile caching
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js').catch(e => console.warn('SW registration failed:', e));
