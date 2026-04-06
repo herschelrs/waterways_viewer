@@ -22,7 +22,6 @@
         .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 10; padding: 10px 20px; background: rgba(0,0,0,0.8); color: #fff; border-radius: 8px; font: 14px system-ui; pointer-events: none; opacity: 0; transition: opacity 0.3s; }
         .toast.show { opacity: 1; }
         .loc-marker { width: 18px; height: 18px; background: #2196f3; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 2px rgba(33,150,243,0.4), 0 1px 4px rgba(0,0,0,0.3); }
-        .heading-cone { position: absolute; width: 0; height: 0; border-left: 14px solid transparent; border-right: 14px solid transparent; border-bottom: 40px solid rgba(33,150,243,0.25); top: -31px; left: 50%; transform-origin: 0px 40px; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -273,78 +272,14 @@
         t._timer = setTimeout(() => t.classList.remove('show'), duration);
     }
 
-    // Location + compass
+    // Location
     let locMarker = null;
-    let headingCone = null;
-    let watchingHeading = false;
 
     function createLocMarker(lat, lng) {
         if (locMarker) locMarker.remove();
         const el = document.createElement('div');
         el.className = 'loc-marker';
-        // Cone for heading (hidden until we have a reading)
-        headingCone = document.createElement('div');
-        headingCone.className = 'heading-cone';
-        headingCone.style.display = 'none';
-        el.style.position = 'relative';
-        el.appendChild(headingCone);
         locMarker = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
-    }
-
-    function updateHeading(deg) {
-        if (!headingCone) return;
-        headingCone.style.display = '';
-        // Rotate cone so it points in the heading direction (CSS 0deg = up = north)
-        headingCone.style.transform = `rotate(${deg}deg)`;
-    }
-
-    function startCompass() {
-        if (watchingHeading) return;
-        watchingHeading = true;
-
-        // iOS: needs permission request from user gesture
-        if (typeof DeviceOrientationEvent !== 'undefined' &&
-            typeof DeviceOrientationEvent.requestPermission === 'function') {
-            DeviceOrientationEvent.requestPermission().then(state => {
-                if (state === 'granted') {
-                    window.addEventListener('deviceorientation', onOrientation);
-                } else {
-                    showToast('Compass permission denied');
-                }
-            }).catch(() => showToast('Compass not available'));
-            return;
-        }
-
-        // Android Chrome: use deviceorientationabsolute for magnetic north
-        if ('ondeviceorientationabsolute' in window) {
-            window.addEventListener('deviceorientationabsolute', onOrientationAbsolute);
-            return;
-        }
-
-        // Fallback: try standard event (alpha may or may not be absolute)
-        if ('ondeviceorientation' in window) {
-            window.addEventListener('deviceorientation', onOrientation);
-            return;
-        }
-
-        // No compass support — just silently don't show heading
-    }
-
-    function onOrientationAbsolute(e) {
-        if (e.alpha != null) {
-            // alpha is degrees from magnetic north; compass heading = 360 - alpha
-            updateHeading(360 - e.alpha);
-        }
-    }
-
-    function onOrientation(e) {
-        // iOS: webkitCompassHeading is degrees from true north (0=N, clockwise)
-        if (e.webkitCompassHeading != null) {
-            updateHeading(e.webkitCompassHeading);
-        } else if (e.absolute && e.alpha != null) {
-            // Some browsers give absolute alpha
-            updateHeading(360 - e.alpha);
-        }
     }
 
     document.getElementById('locate-btn').addEventListener('click', () => {
@@ -359,7 +294,6 @@
                 map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 14) });
                 createLocMarker(lat, lng);
                 showToast(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-                startCompass();
             },
             err => {
                 const msgs = {
