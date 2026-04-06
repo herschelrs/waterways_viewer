@@ -22,7 +22,7 @@
         .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 10; padding: 10px 20px; background: rgba(0,0,0,0.8); color: #fff; border-radius: 8px; font: 14px system-ui; pointer-events: none; opacity: 0; transition: opacity 0.3s; }
         .toast.show { opacity: 1; }
         .loc-marker { width: 18px; height: 18px; background: #2196f3; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 2px rgba(33,150,243,0.4), 0 1px 4px rgba(0,0,0,0.3); }
-        .heading-cone { position: absolute; width: 0; height: 0; border-left: 14px solid transparent; border-right: 14px solid transparent; border-bottom: 40px solid rgba(33,150,243,0.25); top: -36px; left: 50%; transform: translateX(-50%); transform-origin: bottom center; pointer-events: none; }
+        .heading-cone { position: absolute; width: 0; height: 0; border-left: 14px solid transparent; border-right: 14px solid transparent; border-bottom: 40px solid rgba(33,150,243,0.25); top: -31px; left: 50%; transform-origin: 0px 40px; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -295,7 +295,7 @@
         if (!headingCone) return;
         headingCone.style.display = '';
         // Rotate cone so it points in the heading direction (CSS 0deg = up = north)
-        headingCone.style.transform = `translateX(-50%) rotate(${deg}deg)`;
+        headingCone.style.transform = `rotate(${deg}deg)`;
     }
 
     function startCompass() {
