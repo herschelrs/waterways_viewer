@@ -1,0 +1,19 @@
+{
+  "name": "waterways-viewer",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.2",
+    "vite": "^8.0.4"
+  },
+  "dependencies": {
+    "maplibre-contour": "^0.1.0",
+    "maplibre-gl": "^5.22.0"
+  }
+}
