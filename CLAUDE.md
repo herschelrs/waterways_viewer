@@ -5,25 +5,41 @@ waterways, with shaded relief, contour lines, and offline tile caching.
 
 ## Architecture
 
-Currently a single `index.html` monolith (~415 lines) with vanilla JS. Pending
-refactor to Vite + TypeScript modules — see roadmap below.
+Vite + TypeScript. No framework — vanilla DOM for UI, imperative MapLibre API.
 
-Key dependencies (all CDN, no build step yet):
-- **MapLibre GL JS v4** — map rendering
-- **maplibre-contour v0.1.0** — client-side contour generation from DEM tiles
+```
+src/
+  main.ts              — entry point
+  config.ts            — tile URLs, zoom thresholds, colors, constants
+  map-setup.ts         — fetch base style, apply OSM tweaks, create map
+  markers.ts           — pin + location marker
+  geocoding.ts         — coordinate parser (Google Maps URLs, lat/lng)
+  cache.ts             — offline tile caching + tile math
+  ui.ts                — modal, toast, buttons, wires everything together
+  style.css            — all CSS
+  layers/
+    types.ts           — LayerDefinition interface
+    layer-manager.ts   — registers layers into MapLibre style by z-order
+    relief.ts          — USGS shaded relief
+    nhd-fill.ts        — NHD areas + waterbodies
+    nhd-lines.ts       — NHD flowlines (perennial/intermittent/ephemeral)
+    contours.ts        — DEM-based contour lines + labels
+public/
+  sw.js                — service worker for tile caching (unbundled)
+```
+
+Key dependencies:
+- **MapLibre GL JS** — map rendering
+- **maplibre-contour** — client-side contour generation from DEM tiles
 - **OpenFreeMap** — OSM vector tile basemap
 - **USGS services** — NHD waterways, shaded relief (ArcGIS MapServer, free/keyless)
 - **AWS terrain tiles** — DEM data for contours
 
-Service worker (`sw.js`) handles tile caching for offline use.
-
-Deployed on **GitHub Pages** from the repo root.
+Deployed on **GitHub Pages**. Build with `npm run build`, output goes to `dist/`.
 
 ## Roadmap
 
-### 1. Refactor to Vite + TypeScript modules
-Split the monolith into typed modules with a layer abstraction that makes
-adding features easy. This is the prerequisite for everything else.
+### ~~1. Refactor to Vite + TypeScript modules~~ (done)
 - **Plan**: [`plans/refactor-to-modules.md`](plans/refactor-to-modules.md)
 
 ### 2. Public lands layer (PAD-US)
@@ -48,6 +64,7 @@ Mostly CSS + touch event work, orthogonal to the module structure.
 ## Conventions
 
 - No React/framework — vanilla DOM for UI, imperative MapLibre API for map
-- Each map data layer is a self-contained module in `src/layers/` (post-refactor)
-- All external service URLs and magic numbers live in `src/config.ts` (post-refactor)
-- Service worker stays unbundled (`sw.js` at repo root)
+- Each map data layer is a self-contained module in `src/layers/` exporting a `LayerDefinition`
+- All external service URLs and magic numbers live in `src/config.ts`
+- Service worker stays unbundled in `public/sw.js`
+- To add a new layer: create `src/layers/foo.ts`, export a `LayerDefinition`, import in `map-setup.ts`
