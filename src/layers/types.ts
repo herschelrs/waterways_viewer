@@ -6,6 +6,8 @@ import type {
 export interface LayerDefinition {
   /** Unique identifier for this layer group */
   id: string;
+  /** Display name shown in layer controls */
+  label: string;
   /** MapLibre sources to register */
   sources: Record<string, SourceSpecification>;
   /** MapLibre style layers (rendered in order) */

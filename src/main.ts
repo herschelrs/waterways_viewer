@@ -6,9 +6,9 @@ import { initUI } from './ui';
 
 async function main(): Promise<void> {
   registerServiceWorker();
-  const map = await createMap('map');
+  const { map, layerDefs } = await createMap('map');
   const style = map.getStyle();
-  initUI(map, style);
+  initUI(map, style, layerDefs);
 }
 
 main();

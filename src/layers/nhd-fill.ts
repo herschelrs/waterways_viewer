@@ -13,6 +13,7 @@ const tileUrl =
 
 export const nhdFill: LayerDefinition = {
   id: 'nhd-fill',
+  label: 'Waterbodies',
   sources: {
     'nhd-fill': {
       type: 'raster',

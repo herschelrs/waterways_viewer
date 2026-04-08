@@ -42,22 +42,35 @@ Deployed on **GitHub Pages**. Build with `npm run build`, output goes to `dist/`
 ### ~~1. Refactor to Vite + TypeScript modules~~ (done)
 - **Plan**: [`plans/refactor-to-modules.md`](plans/refactor-to-modules.md)
 
-### 2. Public lands layer (PAD-US)
-Add BLM, National Forest, NPS, state land boundaries via the USGS PAD-US
-service. First non-waterway layer, and the trigger for layer controls.
+### ~~2. Public lands layer (PAD-US)~~ (done)
+Added BLM, National Forest, NPS, state land boundaries via the USGS PAD-US
+Fee service. Renders as a raster overlay with agency color-coding.
 - **Plan**: [`plans/public-lands-layer.md`](plans/public-lands-layer.md)
 
-### 3. Layer controls
-Once there are multiple toggleable layers, add a sidebar/panel for
-visibility toggling and opacity adjustment. The layer manager from the
-refactor is designed to support this — each layer is a discrete object
-that can be toggled via `map.setLayoutProperty()`.
+### ~~3. Layer controls~~ (done)
+Layer toggle panel accessible via a "Layers" button. Each data layer
+can be toggled on/off. Uses `map.setLayoutProperty()` on all MapLibre
+layers within a `LayerDefinition`.
 
-### 4. Multiple pins / saved locations
+### 4. Cell coverage layers
+Two separate layers for evaluating connectivity in the backcountry:
+
+**T-Mobile coverage map** — T-Mobile publishes raster coverage tiles
+broken out by technology (2G/3G/LTE/5G). Add as separate toggleable
+sub-layers so users can see where each generation of service reaches.
+Useful for planning trips where satellite communicators may be needed.
+
+**FCC Broadband Map** — The FCC's National Broadband Map
+(`broadbandmap.fcc.gov`) provides carrier-reported coverage data for
+all carriers. Could be used as a more authoritative / multi-carrier
+alternative. Investigate whether they expose a tile service or if
+scraping/proxying is needed.
+
+### 5. Multiple pins / saved locations
 Expand the marker system to support multiple named pins, possibly with
 local storage persistence and export/share.
 
-### 5. Mobile improvements
+### 6. Mobile improvements
 Responsive layout, larger touch targets, better modal UX on small screens.
 Mostly CSS + touch event work, orthogonal to the module structure.
 

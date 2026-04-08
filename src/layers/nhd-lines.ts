@@ -55,6 +55,7 @@ const tileUrl =
 
 export const nhdLines: LayerDefinition = {
   id: 'nhd-lines',
+  label: 'Streams',
   sources: {
     'nhd-lines': {
       type: 'raster',

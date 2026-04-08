@@ -37,6 +37,7 @@ export function buildContourLayer(): LayerDefinition | null {
 
     return {
       id: 'contours',
+      label: 'Contours',
       sources: {
         contours: {
           type: 'vector',

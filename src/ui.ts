@@ -4,6 +4,7 @@ import { parseCoords } from './geocoding';
 import { dropPin, showLocationMarker } from './markers';
 import { cacheViewport } from './cache';
 import type { StyleSpecification } from 'maplibre-gl';
+import type { LayerDefinition } from './layers';
 
 // --- Toast ---
 
@@ -115,10 +116,44 @@ function setupCache(map: maplibregl.Map, style: StyleSpecification): void {
   });
 }
 
+// --- Layer controls ---
+
+function setupLayerControls(map: maplibregl.Map, layerDefs: LayerDefinition[]): void {
+  const btn = document.getElementById('layers-btn')!;
+  const panel = document.getElementById('layers-panel')!;
+
+  // Build checkboxes
+  for (const def of layerDefs) {
+    const label = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.addEventListener('change', () => {
+      const vis = cb.checked ? 'visible' : 'none';
+      for (const layer of def.layers) {
+        map.setLayoutProperty(layer.id, 'visibility', vis);
+      }
+    });
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(def.label));
+    panel.appendChild(label);
+  }
+
+  btn.addEventListener('click', () => panel.classList.toggle('open'));
+
+  // Close panel when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!panel.contains(e.target as Node) && e.target !== btn) {
+      panel.classList.remove('open');
+    }
+  });
+}
+
 // --- Init all UI ---
 
-export function initUI(map: maplibregl.Map, style: StyleSpecification): void {
+export function initUI(map: maplibregl.Map, style: StyleSpecification, layerDefs: LayerDefinition[]): void {
   setupGoTo(map);
   setupLocate(map);
   setupCache(map, style);
+  setupLayerControls(map, layerDefs);
 }

@@ -2,6 +2,7 @@ const TILE_DOMAINS = [
     'tiles.openfreemap.org',
     'basemap.nationalmap.gov',
     'hydro.nationalmap.gov',
+    'gis.blm.gov',
     's3.amazonaws.com',
     'elevation-tiles-prod'
 ];

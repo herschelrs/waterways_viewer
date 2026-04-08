@@ -14,6 +14,13 @@ export const NHD_BASE_URL =
 export const NHD_ATTRIBUTION =
   '<a href="https://www.usgs.gov/national-hydrography">USGS NHD</a>';
 
+// BLM Surface Management Agency (public lands)
+export const SMA_BASE_URL =
+  'https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_SMA_Cached_without_PriUnk/MapServer/export';
+export const SMA_ATTRIBUTION =
+  '<a href="https://www.blm.gov">BLM SMA</a>';
+export const SMA_OPACITY = 0.4;
+
 // NHD feature codes for stream permanence
 export const FCODE_INTERMITTENT = '46003';
 export const FCODE_EPHEMERAL = '46007';

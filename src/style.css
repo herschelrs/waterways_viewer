@@ -29,6 +29,30 @@ body { margin: 0; }
   white-space: nowrap;
 }
 
+#layers-btn { left: 380px; }
+
+#layers-panel {
+  display: none;
+  position: absolute;
+  top: 44px;
+  left: 380px;
+  z-index: 2;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font: 13px system-ui;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+#layers-panel.open { display: block; }
+#layers-panel label {
+  display: block;
+  padding: 4px 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#layers-panel input { margin-right: 6px; }
+
 #cache-progress {
   position: absolute;
   top: 10px;

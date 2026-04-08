@@ -16,6 +16,7 @@ import {
   nhdFill,
   nhdLines,
   buildContourLayer,
+  publicLands,
 } from './layers';
 import type { LayerDefinition } from './layers';
 
@@ -70,7 +71,12 @@ function dimBackground(style: StyleSpecification): void {
  * Fetch the base style, apply OSM tweaks, register data layers,
  * and create the MapLibre map instance.
  */
-export async function createMap(container: string): Promise<maplibregl.Map> {
+export interface MapResult {
+  map: maplibregl.Map;
+  layerDefs: LayerDefinition[];
+}
+
+export async function createMap(container: string): Promise<MapResult> {
   const style: StyleSpecification = await (await fetch(BASE_STYLE_URL)).json();
 
   // Tweak the base OSM style
@@ -79,11 +85,11 @@ export async function createMap(container: string): Promise<maplibregl.Map> {
   dimBackground(style);
 
   // Collect layer definitions
-  const layers: LayerDefinition[] = [relief, nhdFill, nhdLines];
+  const layerDefs: LayerDefinition[] = [relief, publicLands, nhdFill, nhdLines];
   const contours = buildContourLayer();
-  if (contours) layers.splice(2, 0, contours); // contours before nhd-fill
+  if (contours) layerDefs.splice(3, 0, contours); // contours before nhd-fill
 
-  applyLayers(style, layers);
+  applyLayers(style, layerDefs);
 
   const map = new maplibregl.Map({
     container,
@@ -96,5 +102,5 @@ export async function createMap(container: string): Promise<maplibregl.Map> {
   map.addControl(new maplibregl.NavigationControl());
   map.addControl(new maplibregl.ScaleControl());
 
-  return map;
+  return { map, layerDefs };
 }

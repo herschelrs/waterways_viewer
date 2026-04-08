@@ -3,6 +3,7 @@ import type { LayerDefinition } from './types';
 
 export const relief: LayerDefinition = {
   id: 'relief',
+  label: 'Shaded Relief',
   sources: {
     relief: {
       type: 'raster',
